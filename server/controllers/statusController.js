@@ -9,13 +9,70 @@ function isVisible(status, viewerId) {
 }
 
 async function attachAuthors(statuses) {
-  const userIds = [...new Set(statuses.map((status) => status.userId))];
-  const users = await User.find({ uid: { $in: userIds } }).select("uid name username photoURL");
-  const byId = new Map(users.map((user) => [user.uid, user]));
+  const userIds = [
+    ...new Set([
+      ...statuses.map((status) => status.userId),
+
+      ...statuses.flatMap((status) =>
+        (status.seenBy || []).map((item) => item.userId)
+      ),
+
+      ...statuses.flatMap((status) =>
+        (status.reactions || []).map((item) => item.userId)
+      ),
+
+      ...statuses.flatMap((status) =>
+        (status.replies || []).map((item) => item.userId)
+      ),
+    ]),
+  ];
+
+  const users = await User.find({
+    uid: { $in: userIds },
+  }).select("uid name username photoURL");
+
+  const byId = new Map(
+    users.map((user) => [user.uid, user])
+  );
 
   return statuses.map((status) => ({
     ...status.toObject(),
-    author: byId.get(status.userId) || { uid: status.userId, name: "User" }
+
+    author:
+      byId.get(status.userId) || {
+        uid: status.userId,
+        name: "User",
+      },
+
+    seenBy: (status.seenBy || []).map((item) => ({
+      ...item.toObject?.() || item,
+
+      user:
+        byId.get(item.userId) || {
+          uid: item.userId,
+          name: "User",
+        },
+    })),
+
+    reactions: (status.reactions || []).map((item) => ({
+      ...item.toObject?.() || item,
+
+      user:
+        byId.get(item.userId) || {
+          uid: item.userId,
+          name: "User",
+        },
+    })),
+
+    replies: (status.replies || []).map((item) => ({
+      ...item.toObject?.() || item,
+
+      user:
+        byId.get(item.userId) || {
+          uid: item.userId,
+          name: "User",
+        },
+    })),
   }));
 }
 

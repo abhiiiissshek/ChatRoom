@@ -147,7 +147,22 @@ export default function Chat({ user, socket, onSignOut }) {
     try {
       setLoadingConversations(true);
       const data = await getConversations(user.uid);
-      setConversations(data);
+
+const normalized = data.map((item) => {
+  if (item.kind === "group" || item.participant?.isGroup) {
+    return {
+      ...item,
+      participant: {
+        ...item.participant,
+        isGroup: true,
+      },
+    };
+  }
+
+  return item;
+});
+
+setConversations(normalized);
     } catch (error) {
       console.error("Load conversations error:", error);
     } finally {
@@ -299,14 +314,14 @@ export default function Chat({ user, socket, onSignOut }) {
         current.map((item) =>
           item.group?._id === groupId || item.participant?.uid === groupId
             ? {
-                ...item,
-                lastMessage: message.text || (message.mediaUrl ? "[media]" : ""),
-                lastAt: message.createdAt || new Date().toISOString(),
-                unreadCount:
-                  message.from !== user.uid && activeChat?.uid !== groupId
-                    ? (item.unreadCount || 0) + 1
-                    : item.unreadCount || 0,
-              }
+              ...item,
+              lastMessage: message.text || (message.mediaUrl ? "[media]" : ""),
+              lastAt: message.createdAt || new Date().toISOString(),
+              unreadCount:
+                message.from !== user.uid && activeChat?.uid !== groupId
+                  ? (item.unreadCount || 0) + 1
+                  : item.unreadCount || 0,
+            }
             : item
         )
       );
@@ -346,13 +361,13 @@ export default function Chat({ user, socket, onSignOut }) {
         current.map((item) =>
           item.participant?.uid === userId
             ? {
-                ...item,
-                participant: {
-                  ...item.participant,
-                  isOnline,
-                  lastSeen,
-                },
-              }
+              ...item,
+              participant: {
+                ...item.participant,
+                isOnline,
+                lastSeen,
+              },
+            }
             : item
         )
       );
@@ -699,18 +714,30 @@ export default function Chat({ user, socket, onSignOut }) {
   }, [upsertStatus, user.uid]);
 
   const handleCreateGroup = useCallback(async (draft) => {
-    try {
-      const group = await createGroup({ ...draft, createdBy: user.uid });
-      const conversation = groupToConversation(group);
-      upsertGroupConversation(conversation);
-      setActiveChat(conversation.participant);
-      socket?.emit("group:join", { groupId: group._id });
-    } catch (error) {
-      console.error("Create group error:", error);
-      setNotice("Group could not be created");
-      window.setTimeout(() => setNotice(""), 2500);
-    }
-  }, [socket, upsertGroupConversation, user.uid]);
+  try {
+    const createdGroup = await createGroup({
+      ...draft,
+      createdBy: user.uid,
+    });
+
+    const conversation = groupToConversation(createdGroup);
+
+    upsertGroupConversation(conversation);
+
+    setActiveChat(conversation.participant);
+
+    socket?.emit("group:join", {
+      groupId: conversation.participant.uid,
+    });
+
+  } catch (error) {
+    console.error("Create group error:", error);
+
+    setNotice("Group could not be created");
+
+    window.setTimeout(() => setNotice(""), 2500);
+  }
+}, [socket, upsertGroupConversation, user.uid]);
 
   const handleCreateMeeting = useCallback(async () => {
     try {
@@ -891,8 +918,13 @@ export default function Chat({ user, socket, onSignOut }) {
       <CreateGroupModal
         open={groupComposerOpen}
         onClose={() => setGroupComposerOpen(false)}
-        searchUsers={(query) => searchUsers(query).then((data) => data.filter((item) => item.uid !== user.uid))}
+        searchUsers={(query) =>
+          searchUsers(query).then((data) =>
+            data.filter((item) => item.uid !== user.uid)
+          )
+        }
         onCreate={handleCreateGroup}
+        user={user}
       />
 
       <MeetingRoomModal

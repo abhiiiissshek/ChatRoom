@@ -15,7 +15,7 @@ exports.getConversations = async (req, res) => {
     for (const c of convs) {
       if (c.type === "group") {
         const unreadCount = await Message.countDocuments({
-          conversationId: c.id,
+          conversationId: c._id,
           from: { $ne: uid },
           status: { $ne: "seen" }
         });
@@ -26,21 +26,35 @@ exports.getConversations = async (req, res) => {
 
         out.push({
           kind: "group",
-          group: c,
+          group: {
+            ...c.toObject(),
+            _id: c._id.toString(),
+          },
+
           participant: {
-            uid: c.id,
+            uid: c._id.toString(),
             name: c.title,
             username: "group",
-            photoURL: c.avatarUrl,
+            photoURL: c.avatarUrl || "",
             isGroup: true,
-            members: c.members,
-            admins: c.admins,
-            description: c.description,
-            inviteToken: c.inviteToken
+            members: c.members || [],
+            admins: c.admins || [],
+            description: c.description || "",
+            inviteToken: c.inviteToken || "",
           },
-          lastMessage: lastMsg?.text || (lastMsg?.mediaUrl ? "[media]" : c.lastMessage),
-          lastAt: lastMsg?.createdAt || c.updatedAt,
-          unreadCount
+
+          lastMessage:
+            lastMsg?.text ||
+            (lastMsg?.mediaUrl
+              ? "[media]"
+              : c.lastMessage || "Group created"),
+
+          lastAt:
+            lastMsg?.createdAt ||
+            c.updatedAt ||
+            c.createdAt,
+
+          unreadCount: unreadCount || 0,
         });
         continue;
       }

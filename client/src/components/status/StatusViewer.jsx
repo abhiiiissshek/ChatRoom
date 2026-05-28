@@ -22,7 +22,9 @@ export default function StatusViewer({ open, group, user, onClose, onSeen, onRea
 
   useEffect(() => {
     if (!open || !status) return undefined;
-    onSeen(status._id);
+    if (!isOwner) {
+      onSeen(status._id);
+    }
     const startedAt = Date.now();
     const timer = window.setInterval(() => {
       const next = Math.min(100, ((Date.now() - startedAt) / duration) * 100);
@@ -45,6 +47,13 @@ export default function StatusViewer({ open, group, user, onClose, onSeen, onRea
 
   const isVideo = status.mediaType?.startsWith("video");
   const isImage = status.mediaType?.startsWith("image");
+
+  const isOwner =
+    group?.user?.uid === user?.uid ||
+    status.userId === user.uid ||
+    status.author?.uid === user.uid;
+
+  const viewers = status.seenBy || [];
 
   return (
     <Portal>
@@ -75,6 +84,34 @@ export default function StatusViewer({ open, group, user, onClose, onSeen, onRea
             {isImage && <img src={status.mediaUrl} alt="" className="h-full w-full object-contain" />}
             {!status.mediaUrl && <p className="px-8 text-center text-3xl font-semibold leading-tight text-white">{status.text}</p>}
             {status.mediaUrl && status.text && <p className="absolute bottom-24 left-5 right-5 rounded-2xl bg-black/35 p-3 text-center text-sm text-white">{status.text}</p>}
+            {status.reactions?.length > 0 && (
+              <div className="absolute bottom-28 left-4 right-4 flex flex-wrap gap-2">
+                {status.reactions.map((reaction, index) => (
+                  <div
+                    key={`${reaction.userId}-${index}`}
+                    className="rounded-full bg-black/45 px-3 py-1 text-sm text-white backdrop-blur"
+                  >
+                    {reaction.emoji}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {status.replies?.length > 0 && (
+              <div className="absolute bottom-40 left-4 right-4 max-h-28 space-y-2 overflow-y-auto">
+                {status.replies.slice(-3).map((reply, index) => (
+                  <div
+                    key={`${reply.userId}-${index}`}
+                    className="rounded-2xl bg-black/45 px-3 py-2 text-sm text-white backdrop-blur"
+                  >
+                    <span className="font-semibold text-cyan-200">
+                      {reply.user?.name || "User"}:
+                    </span>{" "}
+                    {reply.text}
+                  </div>
+                ))}
+              </div>
+            )}
 
             <button type="button" onClick={() => setIndex(Math.max(0, index - 1))} className="absolute left-0 top-20 h-[calc(100%-150px)] w-1/3" aria-label="Previous status">
               <ChevronLeft className="ml-2 text-white/40" size={22} />
@@ -85,30 +122,108 @@ export default function StatusViewer({ open, group, user, onClose, onSeen, onRea
           </div>
 
           <div className="border-t border-white/10 bg-zinc-950/90 p-3">
-            <div className="mb-3 flex justify-center gap-2">
-              {reactions.map((emoji) => (
-                <button key={emoji} type="button" onClick={() => onReact(status._id, emoji)} className="grid h-9 w-9 place-items-center rounded-full bg-white/[0.08] text-lg transition hover:bg-white/[0.14]">
-                  {emoji}
-                </button>
-              ))}
-            </div>
-            <form
-              className="flex gap-2"
-              onSubmit={(event) => {
-                event.preventDefault();
-                if (!reply.trim()) return;
-                onReply(status._id, reply.trim());
-                setReply("");
-              }}
-            >
-              <div className="relative min-w-0 flex-1">
-                <Smile className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={17} />
-                <input value={reply} onChange={(event) => setReply(event.target.value)} placeholder={`Reply to ${group.user.name}`} className="h-11 w-full rounded-2xl border border-white/10 bg-white/[0.07] pl-10 pr-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-cyan-300/60" />
+
+            {isOwner ? (
+              <div className="space-y-3 py-2">
+
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-slate-400">
+                    Your status
+                  </p>
+
+                  <p className="text-xs text-cyan-200">
+                    {viewers.length} views
+                  </p>
+                </div>
+
+                <div className="max-h-40 space-y-2 overflow-y-auto pr-1">
+                  {viewers.length === 0 ? (
+                    <p className="text-xs text-slate-500">
+                      No views yet
+                    </p>
+                  ) : (
+                    viewers.map((viewer, index) => (
+                      <div
+                        key={`${viewer.userId}-${index}`}
+                        className="flex items-center justify-between rounded-xl bg-white/[0.05] px-3 py-2"
+                      >
+                        <div className="flex min-w-0 items-center gap-2">
+                          <Avatar
+                            src={viewer.user?.photoURL}
+                            name={viewer.user?.name}
+                            size="sm"
+                          />
+
+                          <span className="truncate text-sm text-white">
+                            {viewer.user?.name ||
+                              viewer.user?.username ||
+                              viewer.name ||
+                              "Unknown User"}
+                          </span>
+                        </div>
+
+                        <span className="shrink-0 text-xs text-slate-400">
+                          Seen
+                        </span>
+                      </div>
+                    ))
+                  )}
+                </div>
               </div>
-              <IconButton title="Send reply" type="submit" className="bg-cyan-300 text-zinc-950 hover:bg-cyan-200">
-                <Send size={17} />
-              </IconButton>
-            </form>
+            ) : (
+              <>
+                <div className="mb-3 flex justify-center gap-2">
+                  {reactions.map((emoji) => (
+                    <button
+                      key={emoji}
+                      type="button"
+                      onClick={() => {
+                        console.log("Reacting:", status._id, emoji);
+                        onReact?.(status._id, emoji);
+                      }}
+                      className="grid h-9 w-9 place-items-center rounded-full bg-white/[0.08] text-lg transition hover:bg-white/[0.14]"
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+
+                <form
+                  className="flex gap-2"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+
+                    if (!reply.trim()) return;
+
+                    onReply?.(status._id, reply.trim());
+
+                    setReply("");
+                  }}
+                >
+                  <div className="relative min-w-0 flex-1">
+                    <Smile
+                      className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"
+                      size={17}
+                    />
+
+                    <input
+                      value={reply}
+                      onChange={(event) => setReply(event.target.value)}
+                      placeholder={`Reply to ${group.user.name}`}
+                      className="h-11 w-full rounded-2xl border border-white/10 bg-white/[0.07] pl-10 pr-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-cyan-300/60"
+                    />
+                  </div>
+
+                  <IconButton
+                    title="Send reply"
+                    type="submit"
+                    className="bg-cyan-300 text-zinc-950 hover:bg-cyan-200"
+                  >
+                    <Send size={17} />
+                  </IconButton>
+                </form>
+              </>
+            )}
           </div>
         </section>
       </div>
