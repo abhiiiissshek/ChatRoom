@@ -7,9 +7,14 @@ exports.upsertUser = async (req, res) => {
       name,
       email,
       photoURL,
+      bannerURL,
       username,
       profilePic,
-      bio
+      bio,
+      about,
+      privacy,
+      notificationPreferences,
+      blockedUsers
     } = req.body;
 
     if (!uid) {
@@ -32,9 +37,14 @@ exports.upsertUser = async (req, res) => {
         name,
         email,
         photoURL,
+        bannerURL,
         username: uname,
         profilePic,
-        bio
+        bio,
+        about,
+        privacy,
+        notificationPreferences,
+        blockedUsers
       },
       {
         upsert: true,
@@ -66,11 +76,52 @@ exports.searchUsers = async (req, res) => {
         $options: "i"
       }
     }).select(
-      "uid name photoURL username isOnline lastSeen"
+      "uid name photoURL bannerURL username bio isOnline lastSeen"
     );
 
     res.json(users);
   } catch (err) {
+    res.status(500).json({
+      error: "server error"
+    });
+  }
+};
+
+exports.updateUser = async (req, res) => {
+  try {
+    const uid = req.params.uid;
+    const allowed = [
+      "name",
+      "photoURL",
+      "bannerURL",
+      "profilePic",
+      "bio",
+      "about",
+      "privacy",
+      "notificationPreferences",
+      "blockedUsers"
+    ];
+
+    const patch = {};
+    for (const key of allowed) {
+      if (req.body[key] !== undefined) patch[key] = req.body[key];
+    }
+
+    const user = await User.findOneAndUpdate(
+      { uid },
+      patch,
+      { new: true }
+    ).select("-email");
+
+    if (!user) {
+      return res.status(404).json({
+        error: "user not found"
+      });
+    }
+
+    res.json(user);
+  } catch (err) {
+    console.error(err);
     res.status(500).json({
       error: "server error"
     });

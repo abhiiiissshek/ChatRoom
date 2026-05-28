@@ -4,12 +4,16 @@ exports.getMessages = async (req, res) => {
   try {
     const { u1, u2 } = req.params;
 
-    const msgs = await Message.find({
-      $or: [
-        { from: u1, to: u2 },
-        { from: u2, to: u1 }
-      ]
-    }).sort({ createdAt: 1 });
+    const query = u2 === "group"
+      ? { conversationId: u1, conversationType: "group" }
+      : {
+          $or: [
+            { from: u1, to: u2 },
+            { from: u2, to: u1 }
+          ]
+        };
+
+    const msgs = await Message.find(query).sort({ createdAt: 1 });
 
     res.json(msgs);
   } catch (err) {

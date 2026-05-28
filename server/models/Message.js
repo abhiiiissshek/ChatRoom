@@ -3,6 +3,12 @@ const mongoose = require("mongoose");
 const MessageSchema = new mongoose.Schema({
   from: String,
   to: String,
+  conversationId: String,
+  conversationType: {
+    type: String,
+    enum: ["direct", "group"],
+    default: "direct"
+  },
   text: String,
 
   createdAt: {
@@ -32,7 +38,9 @@ const MessageSchema = new mongoose.Schema({
   },
 
   replyToId: String,
-  replyToText: String
+  replyToText: String,
+  mentions: [String],
+  pinnedBy: [String]
 });
 
 module.exports = mongoose.model("Message", MessageSchema);

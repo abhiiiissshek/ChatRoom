@@ -6,9 +6,23 @@ const UserSchema = new mongoose.Schema(
     name: String,
     email: String,
     photoURL: String,
+    bannerURL: String,
     username: String,
     profilePic: String,
     bio: String,
+    about: String,
+    privacy: {
+      lastSeen: { type: String, default: "contacts" },
+      profilePhoto: { type: String, default: "everyone" },
+      calls: { type: String, default: "everyone" },
+      status: { type: String, default: "everyone" }
+    },
+    notificationPreferences: {
+      muted: { type: Boolean, default: false },
+      sounds: { type: Boolean, default: true },
+      previews: { type: Boolean, default: true }
+    },
+    blockedUsers: [String],
     isOnline: {
       type: Boolean,
       default: false

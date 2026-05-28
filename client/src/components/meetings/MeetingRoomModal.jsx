@@ -1,0 +1,125 @@
+import { Copy, MessageSquare, Mic, MicOff, MonitorUp, PhoneOff, Users, Video, VideoOff } from "lucide-react";
+import { useState } from "react";
+import Avatar from "../ui/Avatar";
+import IconButton from "../ui/IconButton";
+import Portal from "../ui/Portal";
+import { roomInviteUrl } from "../../services/platformService";
+
+export default function MeetingRoomModal({
+  meeting,
+  user,
+  localVideoRef,
+  onLeave,
+  onEnd,
+  onToggleMute,
+  onToggleCamera,
+  onShareScreen,
+  onSendChat,
+}) {
+  const [chatText, setChatText] = useState("");
+  if (!meeting.open) return null;
+
+  const invite = meeting.room?.inviteToken ? roomInviteUrl(meeting.room.inviteToken) : "";
+
+  return (
+    <Portal>
+      <div className="fixed inset-0 z-[85] flex bg-[#08090b] text-white">
+        <main className="flex min-w-0 flex-1 flex-col">
+          <header className="flex h-16 shrink-0 items-center gap-3 border-b border-white/10 px-4">
+            <div className="min-w-0 flex-1">
+              <h2 className="truncate font-semibold">{meeting.room?.title || "Meeting"}</h2>
+              <p className="truncate text-xs text-slate-500">{invite}</p>
+            </div>
+            <IconButton title="Copy invite" onClick={() => navigator.clipboard?.writeText(invite)}>
+              <Copy size={18} />
+            </IconButton>
+          </header>
+
+          <div className="grid min-h-0 flex-1 gap-3 p-3 md:grid-cols-[1fr_320px]">
+            <section className="grid min-h-0 auto-rows-fr gap-3 md:grid-cols-2">
+              <div className="relative flex min-h-[220px] items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-black">
+                <video ref={localVideoRef} autoPlay playsInline muted className="h-full w-full object-cover" />
+                {meeting.cameraOff && (
+                  <div className="absolute inset-0 grid place-items-center bg-slate-950">
+                    <Avatar src={user.photoURL} name={user.name} size="lg" />
+                  </div>
+                )}
+                <span className="absolute bottom-3 left-3 rounded-full bg-black/55 px-3 py-1 text-xs">You</span>
+              </div>
+
+              {meeting.participants.filter((item) => item.uid !== user.uid).map((participant) => (
+                <div key={participant.socketId || participant.uid} className="relative flex min-h-[220px] items-center justify-center rounded-2xl border border-white/10 bg-slate-950">
+                  <div className="flex flex-col items-center gap-3">
+                    <Avatar src={participant.photoURL} name={participant.name} size="lg" />
+                    <span className="text-sm text-slate-300">{participant.name}</span>
+                  </div>
+                  <span className="absolute bottom-3 left-3 rounded-full bg-black/55 px-3 py-1 text-xs">{participant.name}</span>
+                </div>
+              ))}
+            </section>
+
+            <aside className="hidden min-h-0 flex-col overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04] md:flex">
+              <div className="flex items-center gap-2 border-b border-white/10 p-3 text-sm font-semibold">
+                <Users size={16} />
+                Participants
+                <span className="ml-auto rounded-full bg-white/10 px-2 py-0.5 text-xs">{meeting.participants.length || 1}</span>
+              </div>
+              <div className="space-y-1 p-2">
+                {[{ uid: user.uid, name: user.name, photoURL: user.photoURL }, ...meeting.participants.filter((item) => item.uid !== user.uid)].map((participant) => (
+                  <div key={participant.socketId || participant.uid} className="flex items-center gap-3 rounded-xl p-2">
+                    <Avatar src={participant.photoURL} name={participant.name} size="sm" />
+                    <span className="min-w-0 flex-1 truncate text-sm">{participant.name}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-auto border-t border-white/10 p-3">
+                <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-300">
+                  <MessageSquare size={15} />
+                  Meeting chat
+                </div>
+                <div className="mb-3 max-h-48 space-y-2 overflow-y-auto text-sm">
+                  {meeting.chat.map((message, index) => (
+                    <p key={`${message.createdAt}-${index}`} className="rounded-xl bg-white/[0.06] px-3 py-2 text-slate-300">
+                      <span className="font-semibold text-white">{message.name || "User"}:</span> {message.text}
+                    </p>
+                  ))}
+                </div>
+                <form
+                  className="flex gap-2"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    onSendChat(chatText);
+                    setChatText("");
+                  }}
+                >
+                  <input value={chatText} onChange={(event) => setChatText(event.target.value)} placeholder="Message" className="h-10 min-w-0 flex-1 rounded-xl border border-white/10 bg-white/[0.07] px-3 text-sm outline-none" />
+                </form>
+              </div>
+            </aside>
+          </div>
+
+          {meeting.error && <p className="px-4 pb-2 text-center text-sm text-rose-200">{meeting.error}</p>}
+
+          <footer className="flex h-20 shrink-0 items-center justify-center gap-3 border-t border-white/10 px-4">
+            <IconButton title={meeting.muted ? "Unmute" : "Mute"} onClick={onToggleMute}>
+              {meeting.muted ? <MicOff size={19} /> : <Mic size={19} />}
+            </IconButton>
+            <IconButton title={meeting.cameraOff ? "Turn camera on" : "Turn camera off"} onClick={onToggleCamera}>
+              {meeting.cameraOff ? <VideoOff size={19} /> : <Video size={19} />}
+            </IconButton>
+            <IconButton title="Share screen" onClick={onShareScreen} className={meeting.screenSharing ? "bg-cyan-300 text-zinc-950" : ""}>
+              <MonitorUp size={19} />
+            </IconButton>
+            <button onClick={onLeave} className="inline-flex h-12 items-center gap-2 rounded-2xl bg-rose-500 px-5 font-semibold text-white transition hover:bg-rose-400">
+              <PhoneOff size={18} />
+              Leave
+            </button>
+            <button onClick={onEnd} className="hidden h-12 items-center gap-2 rounded-2xl border border-rose-400/35 px-4 font-semibold text-rose-100 transition hover:bg-rose-500/10 sm:inline-flex">
+              End
+            </button>
+          </footer>
+        </main>
+      </div>
+    </Portal>
+  );
+}

@@ -21,6 +21,7 @@ const io = new Server(server, {
   }
 });
 
+app.set("io", io);
 socketHandler(io);
 
 const PORT = process.env.PORT || 4000;

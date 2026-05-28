@@ -7,14 +7,44 @@ exports.getConversations = async (req, res) => {
     const uid = req.params.uid;
 
     const convs = await Conversation.find({
-      participants: uid
-    }).sort({
-      updatedAt: -1
-    });
+      $or: [{ participants: uid }, { members: uid }]
+    }).sort({ updatedAt: -1 });
 
     const out = [];
 
     for (const c of convs) {
+      if (c.type === "group") {
+        const unreadCount = await Message.countDocuments({
+          conversationId: c.id,
+          from: { $ne: uid },
+          status: { $ne: "seen" }
+        });
+
+        const lastMsg = await Message.findOne({
+          conversationId: c.id
+        }).sort({ createdAt: -1 });
+
+        out.push({
+          kind: "group",
+          group: c,
+          participant: {
+            uid: c.id,
+            name: c.title,
+            username: "group",
+            photoURL: c.avatarUrl,
+            isGroup: true,
+            members: c.members,
+            admins: c.admins,
+            description: c.description,
+            inviteToken: c.inviteToken
+          },
+          lastMessage: lastMsg?.text || (lastMsg?.mediaUrl ? "[media]" : c.lastMessage),
+          lastAt: lastMsg?.createdAt || c.updatedAt,
+          unreadCount
+        });
+        continue;
+      }
+
       const otherUid = c.participants.find(
         (x) => x !== uid
       );
