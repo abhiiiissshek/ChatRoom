@@ -29,12 +29,12 @@ export default function ProfileModal({
 
   useEffect(() => {
     setDraft(profile || {});
-  }, [profile]);
+  }, [profile?.uid]);
 
   const status = useMemo(() => {
     if (profile?.isOnline) return "Online";
     return formatLastSeen(profile?.lastSeen);
-  }, [profile]);
+  }, [profile?.uid]);
 
   if (!profile) return null;
 

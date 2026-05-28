@@ -162,7 +162,15 @@ module.exports = (io) => {
           ack?.({ ok: false, error: "Not a group member" });
           return;
         }
+        const alreadyJoined =
+          socket.rooms.has(
+            groupRoom(groupId)
+          );
 
+        if (alreadyJoined) {
+          ack?.({ ok: true });
+          return;
+        }
         socket.join(groupRoom(groupId));
         ack?.({ ok: true });
       } catch (err) {
@@ -194,7 +202,11 @@ module.exports = (io) => {
           mediaType: data.mediaType,
           replyToId: data.replyToId,
           replyToText: data.replyToText,
-          mentions: data.mentions || []
+          mentions: Array.isArray(
+            data.mentions
+          )
+            ? data.mentions.slice(0, 10)
+            : []
         });
 
         group.lastMessage = data.text || (data.mediaUrl ? "[media]" : "");
@@ -238,6 +250,12 @@ module.exports = (io) => {
         msg.status = "seen";
 
         await msg.save();
+        socket.emit(
+          "message_delivered",
+          {
+            messageId: msg._id,
+          }
+        );
 
         if (isOnline(msg.from)) {
           io.to(userRoom(msg.from)).emit(
@@ -272,10 +290,18 @@ module.exports = (io) => {
 
         await msg.save();
 
-        io.emit(
-          "message_deleted",
-          { messageId }
-        );
+        const targets = [
+          msg.from,
+          msg.to,
+        ];
+
+        targets.forEach((uid) => {
+
+          io.to(userRoom(uid)).emit(
+            "message_deleted",
+            { messageId }
+          );
+        });
       }
     );
 
@@ -313,14 +339,23 @@ module.exports = (io) => {
 
         await msg.save();
 
-        io.emit(
-          "message_reacted",
-          {
-            messageId,
-            reactions:
-              msg.reactions
-          }
-        );
+        const targets = [
+          msg.from,
+          msg.to,
+        ];
+
+        targets.forEach((uid) => {
+
+          io.to(userRoom(uid)).emit(
+            "message_reacted",
+            {
+              messageId,
+
+              reactions:
+                msg.reactions,
+            }
+          );
+        });
       }
     );
 
@@ -401,7 +436,11 @@ module.exports = (io) => {
         roomId,
         participant: { uid: user.uid, name: user.name, photoURL: user.photoURL, socketId: socket.id }
       });
-      socket.emit("room:state", { roomId, participants: room.participants, chat: room.chat });
+      io.to(meetingRoom(roomId)).emit("room:state", {
+        roomId,
+        participants: room.participants,
+        chat: room.chat
+      });
     });
 
     socket.on("room:signal", ({ roomId, toSocketId, signal }) => {
@@ -436,13 +475,46 @@ module.exports = (io) => {
       io.to(meetingRoom(roomId)).emit("room:chat", { roomId, message: entry });
     });
 
+    socket.on(
+      "room:invite",
+      async ({ toUsername, room, from }) => {
+
+        if (!toUsername || !room) return;
+
+        const targetUser = await User.findOne({
+          username: toUsername
+        });
+
+        if (!targetUser) {
+          socket.emit("room:error", {
+            error: "User not found"
+          });
+          return;
+        }
+
+        io.to(userRoom(targetUser.uid)).emit(
+          "room:invite",
+          {
+            room,
+            from
+          }
+        );
+      }
+    );
+
     socket.on("room:leave", async ({ roomId, uid }) => {
       if (!roomId || !uid) return;
 
       socket.leave(meetingRoom(roomId));
       await Room.findOneAndUpdate(
         { roomId },
-        { $pull: { participants: { uid } } }
+        {
+          $pull: {
+            participants: {
+              socketId: socket.id
+            }
+          }
+        }
       );
       socket.to(meetingRoom(roomId)).emit("room:participant-left", { roomId, uid, socketId: socket.id });
     });
@@ -467,6 +539,7 @@ module.exports = (io) => {
         }
 
         const remainingSockets = removeOnlineSocket(socket.uid, socket.id);
+        socket.removeAllListeners();
 
         if (remainingSockets > 0) return;
 

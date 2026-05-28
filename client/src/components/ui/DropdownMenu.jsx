@@ -90,18 +90,20 @@ export default function DropdownMenu({
                 type="button"
                 role="menuitem"
                 onClick={() => {
-                  itemLabel && onClose?.();
-                  itemLabel && items.find((item) => item.id === id)?.onSelect?.();
+
+                  onClose?.();
+
+                  items.find(
+                    (item) => item.id === id
+                  )?.onSelect?.();
                 }}
-                className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition ${
-                  divider ? "mt-1 border-t border-white/10" : ""
-                } ${
-                  danger
+                className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition ${divider ? "mt-1 border-t border-white/10" : ""
+                  } ${danger
                     ? "text-rose-200 hover:bg-rose-500/14"
                     : muted
-                    ? "text-slate-500"
-                    : "text-slate-200 hover:bg-white/[0.08]"
-                }`}
+                      ? "text-slate-500"
+                      : "text-slate-200 hover:bg-white/[0.08]"
+                  }`}
               >
                 {Icon && <Icon size={17} />}
                 <span className="min-w-0 flex-1 truncate">{itemLabel}</span>

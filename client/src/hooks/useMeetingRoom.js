@@ -49,6 +49,28 @@ export default function useMeetingRoom({ socket, user }) {
       const stream = await getLocalStream();
       const peer = new RTCPeerConnection({ iceServers });
       stream.getTracks().forEach((track) => peer.addTrack(track, stream));
+      peer.ontrack = (event) => {
+
+        const remoteStream = event.streams[0];
+
+        setMeeting((current) => ({
+          ...current,
+
+          participants: current.participants.map(
+            (participant) => {
+
+              if (participant.socketId !== socketId) {
+                return participant;
+              }
+
+              return {
+                ...participant,
+                stream: remoteStream,
+              };
+            }
+          ),
+        }));
+      };
 
       peer.onicecandidate = (event) => {
         if (!event.candidate || !roomRef.current?.roomId) return;
@@ -78,14 +100,45 @@ export default function useMeetingRoom({ socket, user }) {
 
   const joinRoom = useCallback(
     async (room) => {
+
       if (!socket || !room) return;
-      setMeeting((current) => ({ ...current, open: true, room, error: "" }));
+
+      setMeeting((current) => ({
+        ...current,
+
+        open: true,
+        room,
+
+        participants: [],
+        chat: [],
+        error: "",
+      }));
+
       try {
+
         await getLocalStream();
-        socket.emit("room:join", { roomId: room.roomId, user });
+
+        socket.emit(
+          "room:join",
+          {
+            roomId: room.roomId,
+            user,
+          }
+        );
+
       } catch (error) {
-        console.error("Meeting media error:", error);
-        setMeeting((current) => ({ ...current, error: "Camera or microphone permission was blocked" }));
+
+        console.error(
+          "Meeting media error:",
+          error
+        );
+
+        setMeeting((current) => ({
+          ...current,
+
+          error:
+            "Camera or microphone permission was blocked",
+        }));
       }
     },
     [getLocalStream, socket, user]
@@ -148,16 +201,82 @@ export default function useMeetingRoom({ socket, user }) {
   useEffect(() => {
     if (!socket) return undefined;
 
-    const handleState = ({ participants, chat }) => {
-      setMeeting((current) => ({ ...current, participants: participants || [], chat: chat || [] }));
-      participants?.forEach((participant) => {
-        if (participant.socketId !== socket.id) createPeer(participant.socketId, true);
-      });
+    const handleState = ({
+      participants = [],
+      chat = [],
+    }) => {
+
+      const uniqueParticipants = Array.from(
+        new Map(
+          participants.map((participant) => [
+            participant.socketId ||
+            participant.uid,
+
+            participant,
+          ])
+        ).values()
+      );
+
+      setMeeting((current) => ({
+        ...current,
+
+        participants: uniqueParticipants,
+
+        chat:
+          chat.length >
+            current.chat.length
+            ? chat
+            : current.chat,
+      }));
+
+      uniqueParticipants.forEach(
+        (participant) => {
+
+          if (
+            participant.socketId !== socket.id
+          ) {
+
+            if (
+              !peersRef.current.has(
+                participant.socketId
+              )
+            ) {
+
+              createPeer(
+                participant.socketId,
+                true
+              );
+            }
+          }
+        }
+      );
     };
 
     const handleJoined = ({ participant }) => {
-      setMeeting((current) => ({ ...current, participants: [...current.participants.filter((item) => item.uid !== participant.uid), participant] }));
-      if (participant.socketId !== socket.id) createPeer(participant.socketId, true);
+
+      setMeeting((current) => {
+
+        const uniqueParticipants = Array.from(
+          new Map(
+            [
+              ...current.participants,
+              participant,
+            ].map((item) => [
+              item.socketId || item.uid,
+              item,
+            ])
+          ).values()
+        );
+
+        return {
+          ...current,
+          participants: uniqueParticipants,
+        };
+      });
+
+      if (participant.socketId !== socket.id) {
+        createPeer(participant.socketId, true);
+      }
     };
 
     const handleLeft = ({ socketId }) => {
@@ -169,6 +288,12 @@ export default function useMeetingRoom({ socket, user }) {
     const handleSignal = async ({ fromSocketId, signal }) => {
       const peer = await createPeer(fromSocketId, false);
       if (signal.type === "offer") {
+        if (
+          peer.signalingState !==
+          "stable"
+        ) {
+          return;
+        }
         await peer.setRemoteDescription(new RTCSessionDescription(signal.description));
         const answer = await peer.createAnswer();
         await peer.setLocalDescription(answer);
@@ -182,22 +307,42 @@ export default function useMeetingRoom({ socket, user }) {
       if (signal.type === "candidate") await peer.addIceCandidate(new RTCIceCandidate(signal.candidate));
     };
 
-    const handleMediaState = ({ uid, muted, cameraOff, screenSharing }) => {
+    const handleMediaState = ({
+      uid,
+      muted,
+      cameraOff,
+      screenSharing,
+    }) => {
+
       setMeeting((current) => ({
         ...current,
-        participants: current.participants.map((participant) =>
-          participant.uid === uid
-            ? {
-                ...participant,
-                ...(muted !== undefined ? { muted } : {}),
-                ...(cameraOff !== undefined ? { cameraOff } : {}),
-                ...(screenSharing !== undefined ? { screenSharing } : {}),
-              }
-            : participant
+
+        participants: current.participants.map(
+          (participant) => {
+
+            if (participant.uid !== uid) {
+              return participant;
+            }
+
+            return {
+              ...participant,
+
+              ...(muted !== undefined
+                ? { muted }
+                : {}),
+
+              ...(cameraOff !== undefined
+                ? { cameraOff }
+                : {}),
+
+              ...(screenSharing !== undefined
+                ? { screenSharing }
+                : {}),
+            };
+          }
         ),
       }));
     };
-
     const handleChat = ({ message }) => {
       setMeeting((current) => ({ ...current, chat: [...current.chat, message] }));
     };

@@ -6,6 +6,7 @@ import Portal from "../ui/Portal";
 import { roomInviteUrl } from "../../services/platformService";
 
 export default function MeetingRoomModal({
+  socket,
   meeting,
   user,
   localVideoRef,
@@ -17,9 +18,13 @@ export default function MeetingRoomModal({
   onSendChat,
 }) {
   const [chatText, setChatText] = useState("");
+  const [inviteUsername, setInviteUsername] = useState("");
+
   if (!meeting.open) return null;
 
-  const invite = meeting.room?.inviteToken ? roomInviteUrl(meeting.room.inviteToken) : "";
+  const invite = meeting.room?.inviteToken
+    ? roomInviteUrl(meeting.room.inviteToken)
+    : "";
 
   return (
     <Portal>
@@ -48,12 +53,39 @@ export default function MeetingRoomModal({
               </div>
 
               {meeting.participants.filter((item) => item.uid !== user.uid).map((participant) => (
-                <div key={participant.socketId || participant.uid} className="relative flex min-h-[220px] items-center justify-center rounded-2xl border border-white/10 bg-slate-950">
-                  <div className="flex flex-col items-center gap-3">
-                    <Avatar src={participant.photoURL} name={participant.name} size="lg" />
-                    <span className="text-sm text-slate-300">{participant.name}</span>
-                  </div>
-                  <span className="absolute bottom-3 left-3 rounded-full bg-black/55 px-3 py-1 text-xs">{participant.name}</span>
+                <div
+                  key={participant.socketId || participant.uid}
+                  className="relative flex min-h-[220px] items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-slate-950"
+                >
+
+                  {participant.stream ? (
+                    <video
+                      autoPlay
+                      playsInline
+                      ref={(node) => {
+                        if (node && participant.stream) {
+                          node.srcObject = participant.stream;
+                        }
+                      }}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <div className="flex flex-col items-center gap-3">
+                      <Avatar
+                        src={participant.photoURL}
+                        name={participant.name}
+                        size="lg"
+                      />
+
+                      <span className="text-sm text-slate-300">
+                        {participant.name}
+                      </span>
+                    </div>
+                  )}
+
+                  <span className="absolute bottom-3 left-3 rounded-full bg-black/55 px-3 py-1 text-xs">
+                    {participant.name}
+                  </span>
                 </div>
               ))}
             </section>
@@ -71,6 +103,46 @@ export default function MeetingRoomModal({
                     <span className="min-w-0 flex-1 truncate text-sm">{participant.name}</span>
                   </div>
                 ))}
+              </div>
+              <div className="border-t border-white/10 p-3">
+                <p className="mb-2 text-sm font-semibold text-slate-300">
+                  Invite user
+                </p>
+
+                <div className="flex gap-2">
+                  <input
+                    value={inviteUsername}
+                    onChange={(event) =>
+                      setInviteUsername(event.target.value)
+                    }
+                    placeholder="Enter username"
+                    className="h-10 min-w-0 flex-1 rounded-xl border border-white/10 bg-white/[0.07] px-3 text-sm outline-none"
+                  />
+
+                  <button
+                    onClick={() => {
+                      if (!inviteUsername.trim()) return;
+
+                      socket?.emit("room:invite", {
+                        toUsername: inviteUsername.trim(),
+
+                        room: meeting.room,
+
+                        from: {
+                          uid: user.uid,
+                          name: user.name,
+                          username: user.username,
+                          photoURL: user.photoURL,
+                        },
+                      });
+
+                      setInviteUsername("");
+                    }}
+                    className="rounded-xl bg-cyan-300 px-4 text-sm font-semibold text-zinc-950 transition hover:bg-cyan-200"
+                  >
+                    Invite
+                  </button>
+                </div>
               </div>
               <div className="mt-auto border-t border-white/10 p-3">
                 <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-300">

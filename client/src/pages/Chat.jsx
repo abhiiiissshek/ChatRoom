@@ -148,21 +148,21 @@ export default function Chat({ user, socket, onSignOut }) {
       setLoadingConversations(true);
       const data = await getConversations(user.uid);
 
-const normalized = data.map((item) => {
-  if (item.kind === "group" || item.participant?.isGroup) {
-    return {
-      ...item,
-      participant: {
-        ...item.participant,
-        isGroup: true,
-      },
-    };
-  }
+      const normalized = data.map((item) => {
+        if (item.kind === "group" || item.participant?.isGroup) {
+          return {
+            ...item,
+            participant: {
+              ...item.participant,
+              isGroup: true,
+            },
+          };
+        }
 
-  return item;
-});
+        return item;
+      });
 
-setConversations(normalized);
+      setConversations(normalized);
     } catch (error) {
       console.error("Load conversations error:", error);
     } finally {
@@ -222,7 +222,17 @@ setConversations(normalized);
   }, [activeChat, user.uid]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    const shouldAutoScroll =
+      bottomRef.current &&
+      bottomRef.current.getBoundingClientRect()
+        .top <
+      window.innerHeight + 200;
+
+    if (shouldAutoScroll) {
+      bottomRef.current.scrollIntoView({
+        behavior: "smooth",
+      });
+    }
   }, [messages.length, activeChat?.uid]);
 
   const updateMessage = useCallback((messageId, patch) => {
@@ -374,7 +384,6 @@ setConversations(normalized);
     };
 
     socket.on("private_message", handleMessage);
-    socket.on("message_sent", handleMessage);
     socket.on("group:message", handleGroupMessage);
     socket.on("group:created", handleGroupCreated);
     socket.on("group:updated", handleGroupUpdated);
@@ -395,7 +404,6 @@ setConversations(normalized);
 
     return () => {
       socket.off("private_message", handleMessage);
-      socket.off("message_sent", handleMessage);
       socket.off("group:message", handleGroupMessage);
       socket.off("group:created", handleGroupCreated);
       socket.off("group:updated", handleGroupUpdated);
@@ -498,7 +506,32 @@ setConversations(normalized);
       setAiSuggestions([]);
       return;
     }
+    const optimisticMessage = {
+      _id: crypto.randomUUID(),
 
+      from: user.uid,
+      to: activeChat.uid,
+
+      text: text.trim(),
+
+      createdAt: new Date().toISOString(),
+
+      status: "sending",
+
+      replyToId: replyTo?._id || null,
+
+      replyToText: replyTo
+        ? replyTo.text ||
+        (replyTo.mediaUrl
+          ? "[media]"
+          : "")
+        : null,
+    };
+
+    setMessages((current) => [
+      ...current,
+      optimisticMessage,
+    ]);
     socket.emit("private_message", {
       from: user.uid,
       to: activeChat.uid,
@@ -714,30 +747,30 @@ setConversations(normalized);
   }, [upsertStatus, user.uid]);
 
   const handleCreateGroup = useCallback(async (draft) => {
-  try {
-    const createdGroup = await createGroup({
-      ...draft,
-      createdBy: user.uid,
-    });
+    try {
+      const createdGroup = await createGroup({
+        ...draft,
+        createdBy: user.uid,
+      });
 
-    const conversation = groupToConversation(createdGroup);
+      const conversation = groupToConversation(createdGroup);
 
-    upsertGroupConversation(conversation);
+      upsertGroupConversation(conversation);
 
-    setActiveChat(conversation.participant);
+      setActiveChat(conversation.participant);
 
-    socket?.emit("group:join", {
-      groupId: conversation.participant.uid,
-    });
+      socket?.emit("group:join", {
+        groupId: conversation.participant.uid,
+      });
 
-  } catch (error) {
-    console.error("Create group error:", error);
+    } catch (error) {
+      console.error("Create group error:", error);
 
-    setNotice("Group could not be created");
+      setNotice("Group could not be created");
 
-    window.setTimeout(() => setNotice(""), 2500);
-  }
-}, [socket, upsertGroupConversation, user.uid]);
+      window.setTimeout(() => setNotice(""), 2500);
+    }
+  }, [socket, upsertGroupConversation, user.uid]);
 
   const handleCreateMeeting = useCallback(async () => {
     try {
@@ -928,6 +961,7 @@ setConversations(normalized);
       />
 
       <MeetingRoomModal
+        socket={socket}
         meeting={meetingControls.meeting}
         user={user}
         localVideoRef={meetingControls.localVideoRef}
