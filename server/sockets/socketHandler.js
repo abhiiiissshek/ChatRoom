@@ -422,16 +422,41 @@ module.exports = (io) => {
 
       socket.join(meetingRoom(roomId));
       socket.meetingRoomId = roomId;
+      room.participants =
+        room.participants.filter(
+          (item) =>
+            item.socketId !== socket.id
+        );
+      room.participants =
+        room.participants.filter(
+          (participant) =>
+            participant.uid !==
+            user.uid
+        );
 
-      room.participants = room.participants.filter((item) => item.uid !== user.uid);
       room.participants.push({
         uid: user.uid,
         name: user.name,
         photoURL: user.photoURL,
-        socketId: socket.id
+        socketId: socket.id,
       });
       await room.save();
+      const uniqueParticipants =
+        Array.from(
+          new Map(
+            room.participants.map(
+              (participant) => [
+                participant.uid,
+                participant,
+              ]
+            )
+          ).values()
+        );
 
+      room.participants =
+        uniqueParticipants;
+
+      await room.save();
       socket.to(meetingRoom(roomId)).emit("room:participant-joined", {
         roomId,
         participant: { uid: user.uid, name: user.name, photoURL: user.photoURL, socketId: socket.id }
@@ -502,40 +527,124 @@ module.exports = (io) => {
       }
     );
 
-    socket.on("room:leave", async ({ roomId, uid }) => {
-      if (!roomId || !uid) return;
+    socket.on(
+      "room:leave",
+      async ({ roomId, uid }) => {
 
-      socket.leave(meetingRoom(roomId));
-      await Room.findOneAndUpdate(
-        { roomId },
-        {
-          $pull: {
-            participants: {
-              socketId: socket.id
-            }
-          }
+        if (!roomId || !uid) {
+          return;
         }
-      );
-      socket.to(meetingRoom(roomId)).emit("room:participant-left", { roomId, uid, socketId: socket.id });
-    });
 
-    // Disconnect
+        socket.leave(
+          meetingRoom(roomId)
+        );
+
+        const room =
+          await Room.findOneAndUpdate(
+            { roomId },
+
+            {
+              $pull: {
+                participants: {
+                  uid,
+                },
+              },
+            },
+
+            { new: true }
+          );
+
+        if (!room) return;
+
+        io.to(
+          meetingRoom(roomId)
+        ).emit(
+          "room:participant-left",
+          {
+            roomId,
+            uid,
+            socketId:
+              socket.id,
+          }
+        );
+
+        io.to(
+          meetingRoom(roomId)
+        ).emit("room:state", {
+          roomId,
+
+          participants:
+            room.participants,
+
+          chat: room.chat,
+        });
+      }
+    );// Disconnect
     socket.on(
       "disconnect",
       async () => {
 
         if (!socket.uid) return;
 
-        if (socket.meetingRoomId) {
-          await Room.findOneAndUpdate(
-            { roomId: socket.meetingRoomId },
-            { $pull: { participants: { socketId: socket.id } } }
+        if (
+          socket.meetingRoomId
+        ) {
+
+          const room =
+            await Room.findOneAndUpdate(
+              {
+                roomId:
+                  socket.meetingRoomId,
+              },
+
+              {
+                $pull: {
+                  participants: {
+                    uid:
+                      socket.id,
+                  },
+                },
+              },
+
+              { new: true }
+            );
+
+          socket.to(
+            meetingRoom(
+              socket.meetingRoomId
+            )
+          ).emit(
+            "room:participant-left",
+            {
+              roomId:
+                socket.meetingRoomId,
+
+              uid: socket.uid,
+
+              socketId:
+                socket.id,
+            }
           );
-          socket.to(meetingRoom(socket.meetingRoomId)).emit("room:participant-left", {
-            roomId: socket.meetingRoomId,
-            uid: socket.uid,
-            socketId: socket.id
-          });
+
+          if (room) {
+
+            io.to(
+              meetingRoom(
+                socket.meetingRoomId
+              )
+            ).emit(
+              "room:state",
+              {
+                roomId:
+                  socket.meetingRoomId,
+
+                participants:
+                  room.participants,
+
+                chat: room.chat,
+              }
+            );
+          }
         }
 
         const remainingSockets = removeOnlineSocket(socket.uid, socket.id);
